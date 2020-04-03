@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "aioxrpy"
+version = "1.0.0"
+description = "Ripple blockchain library for Python"
+authors = ["Maciej Janiszewski <maciej@ulam.io>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://ulam.io/"
+repository = "https://github.com/ulamlabs/aioxrpy"
+documentation = "https://aioxrpy.readthedocs.io/en/latest/"
+keywords = ["blockchain", "xrp", "async", "ripple", "cryptocurrency"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+aiohttp = "^3.3.1"
+base58 = "2.0.0"
+ecdsa = "0.13.3"
+
+[tool.poetry.dev-dependencies]
+flake8 = "^3.7.9"
+pytest = "^5.4.1"
+sphinx = "^2.4.4"
+sphinx_rtd_theme = "^0.4.3"
+pytest-cov = "^2.8.1"
+mypy = "^0.770"
+aioresponses = "^0.6.3"
+pytest-aiohttp = "^0.3.0"
+pytest-mock = "^3.0.0"
+sphinx-autodoc-typehints = "^1.10.3"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
