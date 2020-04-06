@@ -2,7 +2,8 @@ from ecdsa.util import sigencode_der
 from aioxrpy.sign import (
     parse_seed, root_key_from_seed, get_ripple_from_pubkey,
     ecc_point_to_bytes_compressed, get_ripple_from_secret,
-    create_signing_hash, ecdsa_make_canonical, ecdsa_sign
+    create_signing_hash, ecdsa_make_canonical, ecdsa_sign,
+    ecdsa_verify
 )
 from aioxrpy.definitions import RippleTransactionType
 
@@ -99,9 +100,12 @@ def test_canonical_signature():
 def test_sign():
     # Verify a correct signature is created (uses a fixed k value):
     key = root_key_from_seed(parse_seed('ssq55ueDob4yV3kPVnNQLHB6icwpC'))
-    assert ecdsa_sign(key, b'\xff\x00\xee\xcc', k=3) == (
+    public_key = key.get_verifying_key()
+    signature = ecdsa_sign(key, b'\xff\x00\xee\xcc', k=3)
+    assert signature == (
         b'0E\x02!\x00\xf90\x8a\x01\x92X\xc3\x10I4O\x85\xf8\x9dR)\xb51\xc8E'
         b'\x83o\x99\xb0\x86\x01\xf1\x13\xbc\xe06\xf9\x02 _mX\xbea\x82\xb9'
         b'\xa1\xe0O\xce\xc3ouf\x8d\xea\xfa\xd2\xe43kHw\x0e\xe5\xc5Y\xd3Q'
         b'\x83\x01'
     )
+    assert ecdsa_verify(public_key, b'\xff\x00\xee\xcc', signature)

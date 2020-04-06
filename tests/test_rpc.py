@@ -28,12 +28,12 @@ def ar():
 async def test_error_mapping(rpc, ar):
     # known exception
     ar.post(rpc.URL, payload={'result': {'error': 'actNotFound'}})
-    with pytest.raises(exceptions.AccountNotFoundError):
+    with pytest.raises(exceptions.AccountNotFoundException):
         await rpc.post('account_info', {'account': 'wrongname'})
 
     # unknown exception
     ar.post(rpc.URL, payload={'result': {'error': 'everythingIsFine'}})
-    with pytest.raises(exceptions.UnknownRippleError):
+    with pytest.raises(exceptions.UnknownRippleException):
         await rpc.post('fee')
 
     payload = {
@@ -66,7 +66,21 @@ async def test_ledger_closed(rpc, mock_post):
 
 
 async def test_submit(rpc, mock_post):
-    await rpc.submit('0123ffc')
+    response = {
+        'engine_result': 'tesSUCCESS'
+    }
+    mock_post.side_effect = asyncio.coroutine(lambda *args, **kwargs: response)
+    assert await rpc.submit('0123ffc') == response
+    mock_post.assert_called_with('submit', {'tx_blob': '0123ffc'})
+
+
+async def test_submit_error_mapping(rpc, mock_post):
+    response = {
+        'engine_result': 'tecNO_DST_INSUF_XRP'
+    }
+    mock_post.side_effect = asyncio.coroutine(lambda *args, **kwargs: response)
+    with pytest.raises(exceptions.RippleTransactionCostlyFailureException):
+        await rpc.submit('0123ffc')
     mock_post.assert_called_with('submit', {'tx_blob': '0123ffc'})
 
 

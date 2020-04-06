@@ -1,16 +1,7 @@
-from decimal import Decimal as D
-
 from aiohttp.client import ClientSession
 
-from aioxrpy.exceptions import ripple_error_to_exception
-
-
-def xrp_to_drops(amount):
-    return int((D(1000000) * amount).quantize(D('1')))
-
-
-def drops_to_xrp(amount):
-    return D(amount) / D(1000000)
+from aioxrpy import exceptions
+from aioxrpy.definitions import RippleTransactionResultCategory
 
 
 class RippleJsonRpc:
@@ -30,7 +21,12 @@ class RippleJsonRpc:
                 result = resp_dict.get('result')
                 error = result.get('error')
                 if error:
-                    raise ripple_error_to_exception(error)
+                    raise {
+                        'actNotFound': exceptions.AccountNotFoundException,
+                        'invalidTransaction': (
+                            exceptions.InvalidTransactionException
+                        )
+                    }.get(error, exceptions.UnknownRippleException)(result)
                 return result
 
     async def account_info(self, account, ledger_index='closed'):
@@ -55,7 +51,35 @@ class RippleJsonRpc:
         return await self.post('ledger_closed')
 
     async def submit(self, tx_blob):
-        return await self.post('submit', {'tx_blob': tx_blob})
+        """
+        Submits transaction to JSON-RPC and handles `engine_result` value,
+        mapping error codes to exceptions
+        """
+        result = await self.post('submit', {'tx_blob': tx_blob})
+        engine_result = result.get('engine_result')
+        category, code = engine_result[:3], engine_result[3:]
+
+        if category != RippleTransactionResultCategory.Success:
+            # Map category to exception
+            raise {
+                RippleTransactionResultCategory.CostlyFailure: (
+                    exceptions.RippleTransactionCostlyFailureException
+                ),
+                RippleTransactionResultCategory.LocalFailure: (
+                    exceptions.RippleTransactionLocalFailureException
+                ),
+                RippleTransactionResultCategory.MalformedFailure: (
+                    exceptions.RippleTransactionMalformedException
+                ),
+                RippleTransactionResultCategory.RetriableFailure: (
+                    exceptions.RippleTransactionRetriableException
+                ),
+                RippleTransactionResultCategory.Failure: (
+                    exceptions.RippleTransactionFailureException
+                )
+            }[category](code)
+
+        return result
 
     async def server_info(self):
         return (await self.post('server_info'))['info']

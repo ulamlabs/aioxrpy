@@ -8,13 +8,11 @@ import hashlib
 
 import base58
 from ecdsa import curves, SigningKey
-from ecdsa.util import sigencode_der
+from ecdsa.util import sigencode_der, sigdecode_der
 
 from aioxrpy.address import decode_address, encode_address
+from aioxrpy.definitions import RippleTransactionFlags
 from aioxrpy.serializer import serialize
-
-
-tfFullyCanonicalSig = 0x80000000
 
 
 def sign_transaction(transaction, private_key, flag_canonical=True):
@@ -25,11 +23,18 @@ def sign_transaction(transaction, private_key, flag_canonical=True):
     """
     if flag_canonical:
         transaction['Flags'] = (
-            transaction.get('Flags', 0) | tfFullyCanonicalSig
+            transaction.get('Flags', 0)
+            | RippleTransactionFlags.FullyCanonicalSig
         )
     sig = signature_for_transaction(transaction, private_key)
     transaction['TxnSignature'] = sig
     return transaction
+
+
+def verify_transaction(transaction, public_key, flag_canonical=True):
+    signature = transaction.pop('TxnSignature')
+    signing_hash = create_signing_hash(transaction)
+    return ecdsa_verify(public_key, signing_hash, signature)
 
 
 def signature_for_transaction(transaction, private_key, ismulti=False):
@@ -136,6 +141,10 @@ def ecdsa_sign(key, signing_hash, **kw):
     # ``sjcl.ecc.ecdsa.secretKey.prototype.encodeDER``
     der_coded = sigencode_der(r, s, None)
     return der_coded
+
+
+def ecdsa_verify(key, signing_hash, signature):
+    return key.verify_digest(signature, signing_hash, sigdecode=sigdecode_der)
 
 
 def ecdsa_make_canonical(r, s):
