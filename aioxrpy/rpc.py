@@ -1,15 +1,27 @@
+import binascii
+from copy import deepcopy
 from dataclasses import dataclass
+from typing import List
 
 from aiohttp.client import ClientSession
 
-from aioxrpy import exceptions
+from aioxrpy import address, exceptions, serializer
 from aioxrpy.definitions import RippleTransactionResultCategory
+from aioxrpy.keys import RippleKey
 
 
 @dataclass
 class RippleReserveInfo:
     base: int
     inc: int
+
+
+@dataclass
+class RippleFeeInfo:
+    base: int
+    median: int
+    minimum: int
+    open_ledger: int
 
 
 class RippleJsonRpc:
@@ -43,8 +55,15 @@ class RippleJsonRpc:
             'ledger_index': ledger_index
         })
 
-    async def fee(self):
-        return await self.post('fee')
+    async def fee(self) -> RippleFeeInfo:
+        result = await self.post('fee')
+        drops = result.get('drops', {})
+        return RippleFeeInfo(
+            base=int(drops.get('base_fee', '10')),
+            median=int(drops.get('median_fee', '10')),
+            minimum=int(drops.get('minimum_fee', '10')),
+            open_ledger=int(drops.get('open_ledger_fee', '10'))
+        )
 
     async def ledger(self, index, **kwargs):
         return await self.post('ledger', {
@@ -60,7 +79,7 @@ class RippleJsonRpc:
 
     async def submit(self, tx_blob):
         """
-        Submits transaction to JSON-RPC and handles `engine_result` value,
+        Submits raw transaction to JSON-RPC and handles `engine_result` value,
         mapping error codes to exceptions
         """
         result = await self.post('submit', {'tx_blob': tx_blob})
@@ -88,6 +107,72 @@ class RippleJsonRpc:
             }[category](code)
 
         return result
+
+    async def sign_and_submit(self, tx: dict, key: RippleKey) -> dict:
+        """
+        Signs, serializes and submits the transaction using provided key
+        """
+        tx = deepcopy(tx)
+
+        if 'Fee' not in tx:
+            fee = await self.fee()
+            tx['Fee'] = fee.minimum
+
+        if 'Account' not in tx:
+            tx['Account'] = key.to_account()
+
+        if 'SigningPubKey' not in tx:
+            tx['SigningPubKey'] = key.to_public()
+
+        if 'Sequence' not in tx:
+            info = await self.account_info(
+                tx['Account'], ledger_index='current'
+            )
+            tx['Sequence'] = info['account_data']['Sequence']
+
+        tx['TxnSignature'] = key.sign_tx(tx)
+        tx_blob = binascii.hexlify(serializer.serialize(tx)).decode()
+        return await self.submit(tx_blob)
+
+    async def multisign_and_submit(
+        self, tx: dict, keys: List[RippleKey]
+    ) -> dict:
+        """
+        Signs, serializes and submits the transaction using multiple
+        keys
+        """
+        tx = deepcopy(tx)
+        assert 'Account' in tx
+
+        if 'Fee' not in tx:
+            # Each signature increases transaction cost
+            fee = await self.fee()
+            tx['Fee'] = fee.minimum * (1 + len(keys))
+
+        if 'Sequence' not in tx:
+            info = await self.account_info(
+                tx['Account'], ledger_index='current'
+            )
+            tx['Sequence'] = info['account_data']['Sequence']
+
+        # sort keys by account ID
+        tx['SigningPubKey'] = b''
+        tx['Signers'] = [
+            {
+                'Signer': {
+                    'Account': key.to_account(),
+                    'TxnSignature': key.sign_tx(
+                        tx, multi_signer=key.to_account()
+                    ),
+                    'SigningPubKey': key.to_public(),
+                }
+            }
+            for key in sorted(
+                keys, key=lambda key: address.decode_address(key.to_account())
+            )
+        ]
+        tx_blob = binascii.hexlify(serializer.serialize(tx)).decode()
+        return await self.submit(tx_blob)
 
     async def server_info(self):
         return (await self.post('server_info'))['info']

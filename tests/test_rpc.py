@@ -4,7 +4,7 @@ from aioresponses import aioresponses
 import pytest
 
 from aioxrpy import exceptions
-from aioxrpy.rpc import RippleJsonRpc, RippleReserveInfo
+from aioxrpy.rpc import RippleJsonRpc, RippleFeeInfo, RippleReserveInfo
 
 
 @pytest.fixture
@@ -46,7 +46,18 @@ async def test_error_mapping(rpc, ar):
 
 
 async def test_fee(rpc, mock_post):
-    await rpc.fee()
+    response = {
+        'drops': {
+            'base_fee': '10',
+            'minimum_fee': '11',
+            'median_fee': '100',
+            'open_ledger_fee': '12'
+        }
+    }
+    mock_post.side_effect = asyncio.coroutine(lambda *args, **kwargs: response)
+    assert await rpc.fee() == RippleFeeInfo(
+        base=10, minimum=11, median=100, open_ledger=12
+    )
     mock_post.assert_called_with('fee')
 
 

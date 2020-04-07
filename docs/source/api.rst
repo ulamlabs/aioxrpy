@@ -25,6 +25,18 @@ Exceptions
     :members:
     :undoc-members:
 
+Hash
+----
+.. automodule:: aioxrpy.hash
+    :members:
+    :undoc-members:
+
+Keys
+----
+.. automodule:: aioxrpy.keys
+    :members:
+    :undoc-members:
+
 RPC
 ---
 .. automodule:: aioxrpy.rpc
@@ -34,11 +46,5 @@ RPC
 Serializer
 ----------
 .. automodule:: aioxrpy.serializer
-    :members:
-    :undoc-members:
-
-Sign
-----
-.. automodule:: aioxrpy.sign
     :members:
     :undoc-members:

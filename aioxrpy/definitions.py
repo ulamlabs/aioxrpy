@@ -59,6 +59,12 @@ class RippleTransactionFlags(IntEnum):
     FullyCanonicalSig = 0x80000000
 
 
+class RippleTransactionHashPrefix(bytes, Enum):
+    HASH_TX_ID = b'TXN\x00'
+    HASH_TX_SIGN = b'STX\x00'
+    HASH_TX_SIGN_MULTI = b'SMT\x00'
+
+
 class RippleTransactionResultCategory(str, Enum):
     """
     Enum containing Ripple transaction categories.
