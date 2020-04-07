@@ -1,7 +1,4 @@
-import asyncio
 import binascii
-
-import pytest
 
 from aioxrpy import decimals, serializer
 from aioxrpy.definitions import RippleTransactionType
@@ -10,33 +7,6 @@ from aioxrpy.sign import (
     sign_transaction, root_key_from_hex, root_key_from_seed, parse_seed,
     verify_transaction
 )
-
-
-@pytest.fixture
-def rpc(mocker):
-    rpc = RippleJsonRpc('http://mock.xrp')
-    mocker.patch.object(
-        rpc,
-        'fee',
-        side_effect=asyncio.coroutine(
-            lambda *args, **kwargs: {'drops': {'minimum_fee': '10'}}
-        )
-    )
-    mocker.patch.object(
-        rpc,
-        'account_info',
-        side_effect=asyncio.coroutine(
-            lambda *args, **kwargs: {'account_data': {'Sequence': 1}}
-        )
-    )
-    mocker.patch.object(
-        rpc,
-        'submit',
-        side_effect=asyncio.coroutine(
-            lambda *args, **kwargs: {'engine_result': 'tesSUCCESS'}
-        )
-    )
-    return rpc
 
 
 def _get_private_key(key):
@@ -55,10 +25,12 @@ def _get_private_key(key):
         return root_key_from_seed(seed)
 
 
-async def test_tx_flow(rpc):
+async def test_tx_flow():
     """
     Tests transaction serialization, signing and submitting flow
     """
+    rpc = RippleJsonRpc('http://localhost:5005')
+
     # Master account from genesis ledger
     # https://xrpl.org/start-a-new-genesis-ledger-in-stand-alone-mode.html
     from_account = 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh'
@@ -75,11 +47,13 @@ async def test_tx_flow(rpc):
     )
     sequence = account_info['account_data']['Sequence']
 
+    reserve = await rpc.get_reserve()
+
     tx = {
         'Account': from_account,
         'Sequence': sequence,
         'TransactionType': RippleTransactionType.Payment,
-        'Amount': decimals.xrp_to_drops(20),
+        'Amount': decimals.xrp_to_drops(reserve.base),
         'Destination': to_account,
         'Fee': int(fee)  # as drops
     }

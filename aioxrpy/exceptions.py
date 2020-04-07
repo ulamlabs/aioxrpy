@@ -66,3 +66,8 @@ class InvalidTransactionException(RippleBaseException):
 class AccountNotFoundException(RippleBaseException):
     def __init__(self, payload={}):
         super().__init__('act_not_found', payload)
+
+
+class ValidatedLedgerUnavailableException(RippleBaseException):
+    def __init__(self, payload={}):
+        super().__init__('validated_ledger_unavailable', payload)

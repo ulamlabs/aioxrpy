@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  rippled:
+    image: xrptipbot/rippled
+    container_name: rippled
+    volumes:
+      - ./rippled.cfg:/opt/ripple/etc/rippled.cfg
+    ports:
+      - 5005:5005
+    command: -a --start

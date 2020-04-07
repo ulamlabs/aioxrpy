@@ -4,7 +4,7 @@ from aioresponses import aioresponses
 import pytest
 
 from aioxrpy import exceptions
-from aioxrpy.rpc import RippleJsonRpc
+from aioxrpy.rpc import RippleJsonRpc, RippleReserveInfo
 
 
 @pytest.fixture
@@ -93,3 +93,24 @@ async def test_server_info(rpc, mock_post):
     mock_post.side_effect = asyncio.coroutine(lambda *args, **kwargs: response)
     assert await rpc.server_info() == response['info']
     mock_post.assert_called_with('server_info')
+
+
+async def test_get_reserve(rpc, mock_post):
+    response = {
+        'info': {
+            'validated_ledger': {
+                'reserve_base_xrp': 20,
+                'reserve_inc_xrp': 5
+            }
+        }
+    }
+    mock_post.side_effect = asyncio.coroutine(lambda *args, **kwargs: response)
+    assert await rpc.get_reserve() == RippleReserveInfo(base=20, inc=5)
+    mock_post.assert_called_with('server_info')
+
+
+async def test_get_reserve_exception(rpc, mock_post):
+    response = {'info': {}}
+    mock_post.side_effect = asyncio.coroutine(lambda *args, **kwargs: response)
+    with pytest.raises(exceptions.ValidatedLedgerUnavailableException):
+        await rpc.get_reserve()

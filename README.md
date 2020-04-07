@@ -20,3 +20,11 @@ $ pip install aioxrpy
 ## Documentation
 
 Docs and usage examples are available [here](https://aioxrpy.readthedocs.io/en/latest).
+
+## Unit testing
+
+To run unit tests, you need to bootstrap a Rippled regtest node first. Use the provided `docker-compose.yml` file.
+
+```
+$ docker-compose up -d
+```

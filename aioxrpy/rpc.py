@@ -1,7 +1,15 @@
+from dataclasses import dataclass
+
 from aiohttp.client import ClientSession
 
 from aioxrpy import exceptions
 from aioxrpy.definitions import RippleTransactionResultCategory
+
+
+@dataclass
+class RippleReserveInfo:
+    base: int
+    inc: int
 
 
 class RippleJsonRpc:
@@ -83,3 +91,14 @@ class RippleJsonRpc:
 
     async def server_info(self):
         return (await self.post('server_info'))['info']
+
+    async def get_reserve(self) -> RippleReserveInfo:
+        result = await self.server_info()
+        validated_ledger = result.get('validated_ledger')
+        if not validated_ledger:
+            raise exceptions.ValidatedLedgerUnavailableException
+
+        return RippleReserveInfo(
+            base=validated_ledger['reserve_base_xrp'],
+            inc=validated_ledger['reserve_inc_xrp']
+        )

@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 Welcome to aioxrpy's documentation!
-==================================
+===================================
 
 .. toctree::
    :maxdepth: 3
