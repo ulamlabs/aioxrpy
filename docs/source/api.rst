@@ -7,6 +7,12 @@ Addresses
     :members:
     :undoc-members:
 
+Decimals
+--------
+.. automodule:: aioxrpy.decimals
+    :members:
+    :undoc-members:
+
 Definitions
 -----------
 .. automodule:: aioxrpy.definitions

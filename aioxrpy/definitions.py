@@ -1,9 +1,9 @@
 """
-Ripple definitions.json converted to Python object
+Ripple type and field definitions
 """
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 import json
 import os
 from typing import Dict
@@ -53,6 +53,32 @@ class RippleType(IntEnum):
     UInt64 = 3
     UInt32 = 2
     STArray = 15
+
+
+class RippleTransactionFlags(IntEnum):
+    FullyCanonicalSig = 0x80000000
+
+
+class RippleTransactionResultCategory(str, Enum):
+    """
+    Enum containing Ripple transaction categories.
+    https://xrpl.org/tec-codes.html
+
+    The original abbreviations for transaction result categories (tec, tel
+    codes) are not expanded anywhere so I had to get creative with the names.
+    """
+    # transaction failed but you had to pay the fees for submitting it anyway
+    CostlyFailure = 'tec'
+    # transaction failed on our end
+    LocalFailure = 'tel'
+    # transaction was malformed, ie. tried to send negative amount
+    MalformedFailure = 'tem'
+    # transaction failed but maybe if some other transaction was applied first
+    # maybe it could've?! 🤔
+    RetriableFailure = 'ter'
+    # transaction failed, but it "could've succeeded in a theoretical ledger"
+    Failure = 'tef'
+    Success = 'tes'
 
 
 @dataclass

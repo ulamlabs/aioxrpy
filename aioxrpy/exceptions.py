@@ -1,94 +1,68 @@
+from aioxrpy.definitions import RippleTransactionResultCategory
+
+
 class RippleBaseException(Exception):
-    pass
+    def __init__(self, error, payload={}):
+        self.payload = payload
+        self.error = error
 
 
-class RippleUnfundedPaymentException(RippleBaseException):
-    error = 'unfunded_payment'
+class RippleTransactionException(RippleBaseException):
+    def __init__(self, error, category, payload={}):
+        super().__init__(error, payload)
+        self.category = category
+
+
+class RippleTransactionCostlyFailureException(RippleTransactionException):
+    def __init__(self, error, payload={}):
+        super().__init__(
+            error, RippleTransactionResultCategory.CostlyFailure, payload
+        )
+
+
+class RippleTransactionLocalFailureException(RippleTransactionException):
+    def __init__(self, error, payload={}):
+        super().__init__(
+            error, RippleTransactionResultCategory.LocalFailure, payload
+        )
+
+
+class RippleTransactionMalformedException(RippleTransactionException):
+    def __init__(self, error, payload={}):
+        super().__init__(
+            error, RippleTransactionResultCategory.MalformedFailure, payload
+        )
+
+
+class RippleTransactionRetriableException(RippleTransactionException):
+    def __init__(self, error, payload={}):
+        super().__init__(
+            error, RippleTransactionResultCategory.RetriableFailure, payload
+        )
+
+
+class RippleTransactionFailureException(RippleTransactionException):
+    def __init__(self, error, payload={}):
+        super().__init__(
+            error, RippleTransactionResultCategory.Failure, payload
+        )
 
 
 class RippleSerializerUnsupportedTypeException(RippleBaseException):
-    error = 'serializer_unsupported_type'
+    def __init__(self, payload={}):
+        super().__init__('serializer_unsupported_type', payload)
 
 
-class UnknownRippleError(RippleBaseException):
-    error = 'unknown_error'
+class UnknownRippleException(RippleBaseException):
+    def __init__(self, payload={}):
+        super().__init__('unknown_error', payload)
 
 
-class DestinationDoesntExistError(RippleBaseException):
-    error = 'no_dst'
+class InvalidTransactionException(RippleBaseException):
+    def __init__(self, payload={}):
+        super().__init__('invalid_transaction', payload)
 
 
-class NotEnoughAmountToCreateDestinationError(DestinationDoesntExistError):
-    error = 'no_dst_insuf_xrp'
-
-
-class NeedMasterKeyError(RippleBaseException):
-    error = 'need_master_key'
-
-
-class InsufficientReserveError(RippleBaseException):
-    error = 'insufficient_reserve'
-
-
-class InsufficientReserveOfferError(InsufficientReserveError):
-    error = 'insufficient_reserve_offer'
-
-
-class InsufficientReserveLineError(InsufficientReserveError):
-    error = 'insufficient_reserve_line'
-
-
-class AssetsFrozenError(RippleBaseException):
-    error = 'frozen'
-
-
-class BadAmountError(RippleBaseException):
-    error = 'bad_amount'
-
-
-class BadFeeError(RippleBaseException):
-    error = 'bad_fee'
-
-
-class AccountNotFoundError(RippleBaseException):
-    error = 'act_not_found'
-
-
-class ValidatedLedgerUnavailable(RippleBaseException):
-    # Custom error for when validated_ledger field is missing
-    error = 'validated_ledger_unavailable'
-
-
-def ripple_error_to_exception(error):
-    return {
-        'actNotFound': AccountNotFoundError
-    }.get(
-        error,
-        UnknownRippleError({'error': error})
-    )
-
-
-def ripple_result_to_exception(category, code):
-    """
-    https://xrpl.org/tec-codes.html
-    """
-    return {
-        'UNFUNDED_PAYMENT': RippleUnfundedPaymentException,
-        'NO_DST': DestinationDoesntExistError,
-        'NO_DST_INSUF_XRP': NotEnoughAmountToCreateDestinationError,
-        'NEED_MASTER_KEY': NeedMasterKeyError,
-        'INSUFFICIENT_RESERVE': InsufficientReserveError,
-        'INSUFFICIENT_RESERVE_OFFER': InsufficientReserveOfferError,
-        'INSUFFICIENT_RESERVE_LINE': InsufficientReserveLineError,
-        'FROZEN': AssetsFrozenError,
-        'BAD_AMOUNT': BadAmountError,
-        'BAD_FEE': BadFeeError,
-    }.get(
-        code,
-        UnknownRippleError(
-            data={
-                'category': category,
-                'code': code
-            }
-        )
-    )
+class AccountNotFoundException(RippleBaseException):
+    def __init__(self, payload={}):
+        super().__init__('act_not_found', payload)
