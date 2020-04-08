@@ -18,22 +18,71 @@ Library is available on PyPi, you can simply install it using `pip`.
 $ pip install aioxrpy
 ```
 
-## Example
+## Usage
+
+### Keys
+
+Signing and verifying transactions, as well as generating new accounts is done through `RippleKey` class. 
 
 ```
-sender = RippleKey(private_key=sender_key)
-rpc = RippleJsonRpc(rpc_url)
+from aioxrpy.keys import RippleKey
 
+# New key
+key = RippleKey()
+
+# From public key
+key = RippleKey(public_key=b'public key')
+
+# From master seed
+key = RippleKey(private_key='seed')
+
+# From private key
+key = RippleKey(private_key=b'private key')
+```
+
+Such key can be converted to Account ID and public key. 
+
+### Submitting transactions
+
+RPC client provides a helper which signs and submits transaction. As a first 
+argument it takes a transaction dict. The second one is a `RippleKey` instance
+used for signing this transaction.
+
+```
+from aioxrpy.rpc import RippleJsonRpc
+
+rpc = RippleJsonRpc(url)
 await rpc.sign_and_submit(
     {
-        'Account': sender.to_account(),
-        'Flags': RippleTransactionFlags.FullyCanonicalSig,
+        'Account': account,
         'TransactionType': RippleTransactionType.Payment,
         'Amount': decimals.xrp_to_drops(200),
-        'Destination': 'rhpu8AZJKnLsxXqPiqsShp5svttVWhwQbG',
+        'Destination': destination,
         'Fee': 10
     },
-    sender
+    signer
+)
+```
+
+### Multi-signed transactions
+
+RPC client provides a helper which signs and submits transaction using multiple
+keys. As a second argument, it expects a list of `RippleKey` instances. Please 
+don't forget that each signer increases transaction fees.
+
+```
+from aioxrpy.rpc import RippleJsonRpc
+
+rpc = RippleJsonRpc(url)
+await rpc.multisign_and_submit(
+    {
+        'Account': account,
+        'TransactionType': RippleTransactionType.Payment,
+        'Amount': decimals.xrp_to_drops(200),
+        'Destination': destination,
+        'Fee': 30
+    },
+    [signer_1, signer_2]
 )
 ```
 
