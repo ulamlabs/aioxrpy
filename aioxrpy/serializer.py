@@ -2,6 +2,7 @@ from binascii import unhexlify
 from abc import ABC, abstractmethod
 from decimal import Decimal as D
 import struct
+from typing import Any, Dict, Tuple, Union
 
 from aioxrpy.address import encode_address, decode_address
 from aioxrpy.definitions import RippleType, RIPPLE_FIELDS, RIPPLE_FIELDS_LOOKUP
@@ -10,35 +11,53 @@ from aioxrpy.exceptions import RippleSerializerUnsupportedTypeException
 
 class BaseSerializer(ABC):
     @abstractmethod
-    def serialize(self, value):
-        raise NotImplementedError
+    def serialize(self, value: Any) -> bytes:
+        """Returns byte-encoded value"""
+        pass  # pragma: no cover
 
     @abstractmethod
-    def deserialize(self, value):
-        raise NotImplementedError
+    def deserialize(self, value: bytes) -> Tuple[int, Any]:
+        """
+        Returns a tuple containing length of original data and deserialized
+        value
+        """
+        pass  # pragma: no cover
 
 
 class BasicTypeSerializer(BaseSerializer):
-    def __init__(self, fmt=None):
-        if fmt:
-            self.fmt = fmt
+    """
+    Serializes basic types such as integers and floats using ``struct`` module
 
-    def serialize(self, value):
+    :params fmt: format string, please refer to documentation for `struct
+                 module <https://docs.python.org/3/library/struct.html>`_
+    """
+
+    def __init__(self, fmt: Union[bytes, str] = ''):
+        assert fmt, 'provide valid fmt value'
+        self.fmt = fmt
+
+    def serialize(self, value: Any) -> bytes:
         return struct.pack(self.fmt, value)
 
-    def deserialize(self, value):
+    def deserialize(self, value: bytes) -> Tuple[int, Any]:
         length = struct.calcsize(self.fmt)
-        return length, struct.unpack_from(self.fmt, value)[0]
+        values = struct.unpack_from(self.fmt, value)
+        return length, values[0]
 
 
 class BlobSerializer(BaseSerializer):
-    # Reference: https://xrpl.org/serialization.html#length-prefixing
-    def serialize(self, value):
+    """
+    Serializer for blob format
+
+    Reference: https://xrpl.org/serialization.html#length-prefixing
+    """
+
+    def serialize(self, value: bytes) -> bytes:
         length = len(value)
         if length > 918744:
             raise ValueError('Payload too long, should be <= 918744')
 
-        prefix = []
+        prefix: Tuple = ()
         if length <= 192:
             prefix = length,
         elif length <= 12480:
@@ -49,7 +68,7 @@ class BlobSerializer(BaseSerializer):
             prefix = 241 + (length >> 16), (length >> 8) & 255, length & 255
         return b''.join((bytes(prefix), value))
 
-    def deserialize(self, value):
+    def deserialize(self, value: bytes) -> Tuple[int, bytes]:
         byte0, byte1, byte2 = value[:3]
         if byte0 <= 192:
             offset = 1
@@ -63,31 +82,39 @@ class BlobSerializer(BaseSerializer):
         return length + offset, value[offset:offset + length]
 
 
-class AccountIDSerializer(BlobSerializer):
-    def serialize(self, value):
-        value = decode_address(value)
-        return super().serialize(value)
+class AccountIDSerializer(BaseSerializer):
+    """
+    Serializer for AccountID type
+    """
 
-    def deserialize(self, value):
-        length, value = super().deserialize(value)
+    def serialize(self, value: str) -> bytes:
+        return BlobSerializer().serialize(decode_address(value))
+
+    def deserialize(self, value: bytes) -> Tuple[int, str]:
+        length, value = BlobSerializer().deserialize(value)
         return length, encode_address(value)
 
 
 class CurrencySerializer(BaseSerializer):
-    def deserialize(self, value):
-        # Currency code is formatted in such a way, that first 12 bytes
-        # are reserved and last 5 bytes are also reserved
+    """
+    Currency code serializer
+
+    ``[12 reserved bytes][3-character currency code][5 reserved bytes]``
+    """
+
+    def deserialize(self, value: bytes) -> Tuple[int, str]:
         return 20, value[12:15].decode()
 
-    def serialize(self, value):
+    def serialize(self, value: str) -> bytes:
         return value[:3].encode().rjust(15, b'\x00').ljust(20, b'\x00')
 
 
 class AmountSerializer(BaseSerializer):
-    MIN_MANTISSA = 10**15
-    MAX_MANTISSA = 10**16 - 1
-    MIN_EXP = -96
-    MAX_EXP = 80
+    def __init__(self):
+        self.MIN_MANTISSA = 10**15
+        self.MAX_MANTISSA = 10**16 - 1
+        self.MIN_EXP = -96
+        self.MAX_EXP = 80
 
     def scale_to_xrp_amount(self, value):
         amount = (value * (D(10) ** 15)).normalize()
@@ -254,14 +281,16 @@ class PathSetSerializer(BaseSerializer):
 
 
 class ObjectSerializer(BaseSerializer):
-    def serialize(self, value):
-        """
-        To serialize an object to Ripple format, we need to follow these steps:
-        1. Convert each field data to binary format
-        2. Sort fields in "canonical order"
-        3. Prefix each field with a field ID.
-        4. Concatenate fields (with prefixes) in their sorted order
-        """
+    """
+    To serialize an object to Ripple format, we need to follow these steps:
+
+    1. Convert each field data to binary format
+    2. Sort fields in "canonical order"
+    3. Prefix each field with a field ID.
+    4. Concatenate fields (with prefixes) in their sorted order
+    """
+
+    def serialize(self, value: Dict) -> bytes:
         serialized = {
             k: encode(k, v)
             for k, v in value.items()
@@ -274,7 +303,7 @@ class ObjectSerializer(BaseSerializer):
         )
         return b''.join(serialized[k] for k in canonical_order)
 
-    def deserialize(self, value):
+    def deserialize(self, value: bytes) -> Tuple[int, Dict]:
         cursor = 0
         values = {}
         while cursor < len(value):
@@ -350,11 +379,19 @@ def lookup_field(binary):
     return length, RIPPLE_FIELDS_LOOKUP[type_code].get(field_code)
 
 
-def serialize(obj):
+def serialize(obj: Dict) -> bytes:
+    """
+    Serializes object to binary format.
+    Shorthand for ``ObjectSerializer().serialize(obj)``
+    """
     return ObjectSerializer().serialize(obj)
 
 
-def deserialize(binary):
+def deserialize(binary: bytes) -> Dict:
+    """
+    Deserializes object from binary format.
+    Shorthand for ``ObjectSerializer().deserialize(binary)``
+    """
     if isinstance(binary, str):
         binary = unhexlify(binary)
     _, obj = ObjectSerializer().deserialize(binary)

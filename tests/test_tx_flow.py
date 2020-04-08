@@ -66,14 +66,17 @@ async def test_tx_flow_multi_sign(master):
     """
     rpc = RippleJsonRpc('http://localhost:5005')
     reserve = await rpc.get_reserve()
+    fee = await rpc.fee()
 
     account = RippleKey()
     await rpc.sign_and_submit(
         {
+            'Account': master.to_account(),
             'Amount': decimals.xrp_to_drops((reserve.base * 2) + 100),
             'Flags': RippleTransactionFlags.FullyCanonicalSig,
             'TransactionType': RippleTransactionType.Payment,
-            'Destination': account.to_account()
+            'Destination': account.to_account(),
+            'Fee': fee.minimum
         },
         master
     )
@@ -83,7 +86,8 @@ async def test_tx_flow_multi_sign(master):
     account_key_2 = RippleKey()
     await rpc.sign_and_submit(
         {
-            "Flags": 0,
+            'Account': account.to_account(),
+            "Flags": RippleTransactionFlags.FullyCanonicalSig,
             "TransactionType": RippleTransactionType.SignerListSet,
             "SignerQuorum": 2,
             "SignerEntries": [
@@ -99,11 +103,11 @@ async def test_tx_flow_multi_sign(master):
                         "SignerWeight": 1
                     }
                 }
-            ]
+            ],
+            'Fee': fee.minimum
         },
         account
     )
-    await rpc.ledger_accept()
 
     destination = RippleKey()
     result = await rpc.multisign_and_submit(
@@ -112,7 +116,9 @@ async def test_tx_flow_multi_sign(master):
             'Flags': RippleTransactionFlags.FullyCanonicalSig,
             'TransactionType': RippleTransactionType.Payment,
             'Amount': decimals.xrp_to_drops(reserve.base),
-            'Destination': destination.to_account()
+            'Destination': destination.to_account(),
+            # Each signature increases transaction cost
+            'Fee': fee.minimum * 3
         },
         [account_key_1, account_key_2]
     )

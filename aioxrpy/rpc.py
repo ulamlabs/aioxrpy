@@ -1,7 +1,7 @@
 import binascii
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import List
+from typing import Dict, List
 
 from aiohttp.client import ClientSession
 
@@ -114,13 +114,6 @@ class RippleJsonRpc:
         """
         tx = deepcopy(tx)
 
-        if 'Fee' not in tx:
-            fee = await self.fee()
-            tx['Fee'] = fee.minimum
-
-        if 'Account' not in tx:
-            tx['Account'] = key.to_account()
-
         if 'SigningPubKey' not in tx:
             tx['SigningPubKey'] = key.to_public()
 
@@ -135,7 +128,7 @@ class RippleJsonRpc:
         return await self.submit(tx_blob)
 
     async def multisign_and_submit(
-        self, tx: dict, keys: List[RippleKey]
+        self, tx: Dict, keys: List[RippleKey]
     ) -> dict:
         """
         Signs, serializes and submits the transaction using multiple
@@ -143,11 +136,6 @@ class RippleJsonRpc:
         """
         tx = deepcopy(tx)
         assert 'Account' in tx
-
-        if 'Fee' not in tx:
-            # Each signature increases transaction cost
-            fee = await self.fee()
-            tx['Fee'] = fee.minimum * (1 + len(keys))
 
         if 'Sequence' not in tx:
             info = await self.account_info(
@@ -161,9 +149,7 @@ class RippleJsonRpc:
             {
                 'Signer': {
                     'Account': key.to_account(),
-                    'TxnSignature': key.sign_tx(
-                        tx, multi_signer=key.to_account()
-                    ),
+                    'TxnSignature': key.sign_tx(tx, multi_sign=True),
                     'SigningPubKey': key.to_public(),
                 }
             }

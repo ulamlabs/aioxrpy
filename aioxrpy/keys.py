@@ -1,39 +1,50 @@
 import base58
-import binascii
+from typing import Callable, Dict, Optional, Union
 
-import ecdsa
+from ecdsa.curves import SECP256k1
+from ecdsa.keys import SigningKey, VerifyingKey
+from ecdsa.util import sigencode_der, sigdecode_der, PRNG
 import hashlib
 import secrets
 
-from aioxrpy.address import encode_address
+from aioxrpy.address import decode_address, encode_address
+from aioxrpy.definitions import RippleTransactionHashPrefix
 from aioxrpy.hash import first_half_of_sha512, hash_transaction
 
 
-def signing_key_from_seed(seed):
+def make_canonical(r, s, order):
+    """Makes ecdsa signature canonical"""
+    N = SECP256k1.order
+    if not N / 2 >= s:
+        s = N - s
+    return r, s, order
+
+
+def signing_key_from_seed(encoded_seed: str) -> SigningKey:
     """
-    This derives your master key the given seed.
+    Derives SigningKey from master seed.
 
     Reference:
     https://ripple.com/wiki/Account_Family#Root_Key_.28GenerateRootDeterministicKey.29
     """
-    # Ripple seeds are base58 strings prefixed with "s" letter
-    assert seed[0] == 's'
-    seed = base58.b58decode_check(seed, alphabet=base58.RIPPLE_ALPHABET)[1:]
+    # Ripple seeds are base58-encoded and prefixed with letter "s"
+    assert encoded_seed[0] == 's'
+    seed = base58.b58decode_check(
+        encoded_seed, alphabet=base58.RIPPLE_ALPHABET
+    )[1:]
 
     seq = 0
     while True:
         private_gen = int.from_bytes(
-            first_half_of_sha512(
-                b''.join([seed, seq.to_bytes(4, byteorder='big')])
-            ),
+            first_half_of_sha512(seed, seq.to_bytes(4, byteorder='big')),
             byteorder='big'
         )
         seq += 1
-        if ecdsa.SECP256k1.order >= private_gen:
+        if SECP256k1.order >= private_gen:
             break
 
-    public_key = ecdsa.VerifyingKey.from_public_point(
-        ecdsa.SECP256k1.generator * private_gen, curve=ecdsa.SECP256k1
+    public_key = VerifyingKey.from_public_point(
+        SECP256k1.generator * private_gen, curve=SECP256k1
     )
 
     # Now that we have the private and public generators, we apparently
@@ -44,96 +55,114 @@ def signing_key_from_seed(seed):
     while True:
         secret = int.from_bytes(
             first_half_of_sha512(
-                b''.join([
-                    public_gen_compressed,
-                    bytes(4),
-                    i.to_bytes(4, byteorder='big')
-                ])
+                public_gen_compressed, bytes(4), i.to_bytes(4, byteorder='big')
             ),
             byteorder='big'
         )
         i += 1
-        if ecdsa.SECP256k1.order >= secret:
+        if SECP256k1.order >= secret:
             break
-    secret = (secret + private_gen) % ecdsa.SECP256k1.order
 
-    # The ECDSA signing key object will, given this secret, then expose
-    # the actual private and public key we are supposed to work with.
-    key = ecdsa.SigningKey.from_secret_exponent(secret, ecdsa.SECP256k1)
-    # Attach the generators as supplemental data
-    key.private_gen = private_gen
-    return key
+    secret = (secret + private_gen) % SECP256k1.order
+    return SigningKey.from_secret_exponent(secret, curve=SECP256k1)
 
 
 class RippleKey:
     """
-    RippleKey instance.
+    RippleKey instance
 
-    Depends on which kwargs are given, this works in a different way:
-    - No kwargs - generates a new private key
-    - Only private_key - public key is being derived from private key
-    - Only public_key - RippleKey instance has no private key
+    :param private_key: private key or master seed,
+    :param public_key: public key
+
+    If no arguments are passed, new key will be generated.
     """
-    def __init__(self, *, private_key: str = None, public_key: str = None):
-        assert not (private_key and public_key), 'Pass only 1 key'
+
+    def __init__(
+        self,
+        *,
+        private_key: Optional[Union[str, bytes]] = None,
+        public_key: Optional[bytes] = None
+    ):
+        assert not (private_key and public_key), 'Pass only one key'
         if public_key:
-            self._vk = ecdsa.VerifyingKey.from_string(
-                public_key, curve=ecdsa.SECP256k1
-            )
+            self._sk = None
+            self._vk = VerifyingKey.from_string(public_key, curve=SECP256k1)
             return
 
         if private_key:
-            try:
-                self._sk = ecdsa.SigningKey.from_string(
-                    binascii.unhexlify(private_key), curve=ecdsa.SECP256k1
-                )
-            except (AssertionError, binascii.Error):
+            if isinstance(private_key, str):
                 self._sk = signing_key_from_seed(private_key)
+            else:
+                self._sk = SigningKey.from_string(private_key, curve=SECP256k1)
         else:
-            entropy = ecdsa.util.PRNG(secrets.randbits(512))
-            self._sk = ecdsa.SigningKey.generate(
-                entropy=entropy, curve=ecdsa.SECP256k1
+            entropy = PRNG(secrets.randbits(512))
+            self._sk = SigningKey.generate(
+                entropy=entropy, curve=SECP256k1
             )
 
         self._vk = self._sk.get_verifying_key()
 
-    def to_public(self):
+    def to_public(self) -> bytes:
+        """
+        Returns public key encoded in compressed format.
+        """
         return self._vk.to_string(encoding='compressed')
 
-    def to_account(self):
+    def to_account(self) -> str:
+        """
+        Returns base58-encoded RIPEMD-160 hash of SHA256 hash of public key,
+        which is used as an account name on Ripple ledger.
+
+        For example: ``rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh``
+        """
         pubkey = self.to_public()
         ripemd160 = hashlib.new('ripemd160')
         ripemd160.update(hashlib.sha256(pubkey).digest())
         return encode_address(ripemd160.digest())
 
-    def sign_tx(self, tx, multi_signer=None, **kwargs):
-        return self.sign(
-            hash_transaction(tx, multi_signer=multi_signer), **kwargs
+    def _tx_prefix(self, multi_sign: bool) -> bytes:
+        return (
+            RippleTransactionHashPrefix.HASH_TX_SIGN
+            if not multi_sign
+            else RippleTransactionHashPrefix.HASH_TX_SIGN_MULTI
         )
 
-    def verify_tx(self, tx, signature, multi_signer=None):
-        return self.verify(
-            hash_transaction(tx, multi_signer=multi_signer), signature
+    def _tx_suffix(self, multi_sign: bool) -> bytes:
+        return b'' if not multi_sign else decode_address(self.to_account())
+
+    def sign_tx(self, tx: Dict, *, multi_sign: bool = False, **kwargs) -> str:
+        tx_hash = hash_transaction(
+            self._tx_prefix(multi_sign), tx, self._tx_suffix(multi_sign)
         )
+        return self.sign(tx_hash, **kwargs)
 
-    def sign(self, data, **kwargs):
+    def verify_tx(
+        self, tx: Dict, signature: str, *, multi_sign: bool = False, **kwargs
+    ) -> bool:
+        tx_hash = hash_transaction(
+            self._tx_prefix(multi_sign), tx, self._tx_suffix(multi_sign)
+        )
+        return self.verify(tx_hash, signature, **kwargs)
+
+    def sign(
+        self, data: bytes, sigencode: Callable = sigencode_der, **kwargs
+    ) -> str:
         """
-        TODO: try to make use of self._sk.sign_digest() instead
+        Signs the provided data and returns a canonical signature
         """
-        data = int.from_bytes(data, byteorder='big')
-        r, s = self._sk.sign_number(data, **kwargs)
+        assert self._sk is not None, "Can't sign with a public key"
+        return sigencode(*self._sk.sign_digest(
+            data, sigencode=make_canonical, **kwargs
+        ))
 
-        # make s canonical
-        N = ecdsa.curves.SECP256k1.order
-        if not N / 2 >= s:
-            s = N - s
-
-        return ecdsa.util.sigencode_der(r, s, None)
-
-    def verify(self, data, signature, **kwargs):
+    def verify(
+        self,
+        data: bytes,
+        signature: str,
+        *,
+        sigdecode: Callable = sigdecode_der,
+        **kwargs
+    ) -> bool:
         return self._vk.verify_digest(
-            signature,
-            data,
-            sigdecode=ecdsa.util.sigdecode_der,
-            **kwargs
+            signature, data, sigdecode=sigdecode, **kwargs
         )

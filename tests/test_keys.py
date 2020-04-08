@@ -1,4 +1,7 @@
 import binascii
+
+import pytest
+
 from aioxrpy.keys import RippleKey, signing_key_from_seed
 
 
@@ -11,18 +14,15 @@ def test_key_derivation():
 
 def test_xrp_key_from_seed():
     key = RippleKey(private_key='shHM53KPZ87Gwdqarm1bAmPeXg8Tn')
-    assert key._sk.private_gen == (
-        56531419669858502233010723520717330944031766521662186235427530210896940609752  # noqa
-    )
     assert key.to_account() == 'rhcfR9Cg98qCxHpCcPBmMonbDBXo84wyTn'
 
 
 def test_xrp_key_from_hex():
-    hex_key = (
+    hex_key = binascii.unhexlify(
         '42aa52b7da6fc94b8ee8946aeccafb6a03b1f62de2095834e3dcf26d55e0d458'
     )
     key = RippleKey(private_key=hex_key)
-    assert binascii.hexlify(key._sk.to_string()).decode() == hex_key
+    assert key._sk.to_string() == hex_key
 
 
 def test_xrp_key_creating():
@@ -59,3 +59,12 @@ def test_xrp_key_signature():
         b'\xba\x8aW\xdb'
     )
     assert key.verify_tx(data, signature)
+
+
+def test_xrp_public_key_signature():
+    private_key = RippleKey()
+    key = RippleKey(public_key=private_key.to_public())
+    data = {'Account': key.to_account()}
+
+    with pytest.raises(AssertionError):
+        key.sign_tx(data)
