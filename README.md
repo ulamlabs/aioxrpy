@@ -24,7 +24,7 @@ $ pip install aioxrpy
 
 Signing and verifying transactions, as well as generating new accounts is done through `RippleKey` class. 
 
-```
+```python
 from aioxrpy.keys import RippleKey
 
 # New key
@@ -48,7 +48,7 @@ RPC client provides a helper which signs and submits transaction. As a first
 argument it takes a transaction dict. The second one is a `RippleKey` instance
 used for signing this transaction.
 
-```
+```python
 from aioxrpy.rpc import RippleJsonRpc
 
 rpc = RippleJsonRpc(url)
@@ -70,7 +70,7 @@ RPC client provides a helper which signs and submits transaction using multiple
 keys. As a second argument, it expects a list of `RippleKey` instances. Please 
 don't forget that each signer increases transaction fees.
 
-```
+```python
 from aioxrpy.rpc import RippleJsonRpc
 
 rpc = RippleJsonRpc(url)
@@ -94,6 +94,6 @@ Docs and usage examples are available [here](https://aioxrpy.readthedocs.io/en/l
 
 To run unit tests, you need to bootstrap a Rippled regtest node first. Use the provided `docker-compose.yml` file.
 
-```
+```shell
 $ docker-compose up -d
 ```
